@@ -1,0 +1,7 @@
+Pop1K7/
+Pop1K7.zip
+*.zip
+tokenizer/
+checkpoints/
+tutorial/
+__pycache__/
