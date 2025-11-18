@@ -34,7 +34,7 @@ def parse_opt():
     parser.add_argument('--ckp_folder', type=str, default='checkpoints', help='path to save checkpoints')
     parser.add_argument('--continue_training_path', type=str, default='', help='path to a checkpoint to continue training')
     parser.add_argument('--epochs', type=int, default=120, help='number of training epochs')
-    parser.add_argument('--batch_size', type=int, default=16, help='batch size for training')
+    parser.add_argument('--batch_size', type=int, default=32, help='batch size for training')
     
     # --- Testing ---
     parser.add_argument('--model_path', type=str, help='path to the model checkpoint for testing', default='./checkpoints/epoch_200.pkl')
@@ -178,7 +178,7 @@ def test(n_target_bar=32, temperature=1.2, topk=5, output_path='', model_path=''
             print(f"Model path does not exist: {model_path}")
             return
             
-        checkpoint = torch.load(model_path, map_location=opt.device)
+        checkpoint = torch.load(model_path, map_location=opt.device, weights_only=False)
         model = Model().to(opt.device)
         # 載入 state_dict 時，因為模型現在是 self.gpt2，需要調整 key
         # Hugging Face 模型儲存的 state_dict 沒有 'gpt2.' 前綴
@@ -236,14 +236,16 @@ def test(n_target_bar=32, temperature=1.2, topk=5, output_path='', model_path=''
             word2event=word2event,
             output_path=output_path,
             prompt_path=None)
+        
+        # Generate wav by fluidsynth
+        print("Generating WAV file...")
+        utils.midi2wav(output_path, output_path.replace('.mid', '.wav'))       
+        print("WAV generation completed.")
 
 def train():
     epochs = opt.epochs
     DATA_DIR = Path(opt.data_path)
     train_list: List[Path] = list(DATA_DIR.glob("**/*.mid")) + list(DATA_DIR.glob("**/*.midi"))
-    print('Number of training files found:', len(train_list))
-    print(f"path: {train_list}")
-    print('train list len =', len(train_list))
 
     train_dataset = NewsDataset(train_list)
     train_dataloader = DataLoader(train_dataset, batch_size=opt.batch_size, shuffle=True, pin_memory=True, num_workers=8)
@@ -289,6 +291,7 @@ def train():
         losses.append(avg_loss)
         print('>>> Epoch: {}, Loss: {:.5f}'.format(epoch, avg_loss))
         if epoch % 10 == 0:
+        # if True:
             print('Saving checkpoint...')
             torch.save({'epoch': epoch,
                         'model': model.state_dict(),
@@ -299,6 +302,7 @@ def train():
             np.save(os.path.join(opt.ckp_folder, 'training_loss.npy'), np.array(losses))
 
         if (epoch % 10 == 0) and avg_loss <= 1.2:
+        # if True:
             print('Performing generation for evaluation...')
             # inference after certain epochs
             test(

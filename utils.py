@@ -344,3 +344,9 @@ def write_midi(words, word2event, output_path, prompt_path=None):
                     miditoolkit.midi.containers.Marker(text=c[1], time=c[0]))
     # write
     midi.dump(output_path)
+
+
+def midi2wav(midi_path, output_path, soundfont_path="/usr/share/sounds/sf2/FluidR3_GM.sf2"):
+    from midi2audio import FluidSynth
+    fs = FluidSynth(sound_font=soundfont_path)
+    fs.midi_to_audio(midi_path, output_path)
