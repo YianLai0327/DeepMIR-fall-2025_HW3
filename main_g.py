@@ -162,7 +162,10 @@ def temperature_sampling(logits, temperature, topk):
     sampled_token_index = topk_indices.gather(-1, sampled_index_in_topk)
     return sampled_token_index.item()
     
-def test(n_target_bar=32, temperature=1.2, topk=5, output_path='', model_path='', prompt=False):
+def test(n_target_bar=32, temperature=1.2, topk=5, output_path='', model_path='', prompt=False, seed=42):
+    # set random seed
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     try:
         output_dir = os.path.dirname(output_path)
         if not os.path.exists(output_dir):
@@ -236,6 +239,91 @@ def test(n_target_bar=32, temperature=1.2, topk=5, output_path='', model_path=''
             word2event=word2event,
             output_path=output_path,
             prompt_path=None)
+        
+        # Generate wav by fluidsynth
+        print("Generating WAV file...")
+        utils.midi2wav(output_path, output_path.replace('.mid', '.wav'))       
+        print("WAV generation completed.")
+        
+def continuation(prompt_midi_path, n_target_bar=24, temperature=1.2, topk=5, output_path='', model_path='', seed=42):
+    # set random seed
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    # 檢查 prompt midi 是否存在
+    if not os.path.exists(prompt_midi_path):
+        print(f"Prompt MIDI path does not exist: {prompt_midi_path}")
+        return
+
+    try:
+        output_dir = os.path.dirname(output_path)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+            print(f"Directory '{output_dir}' is created")
+    except Exception as e:
+        print(f"Could not create output directory: {e}")
+        return
+
+    event2word, word2event = pickle.load(open(opt.dict_path, 'rb'))
+    
+    # 將 prompt MIDI 轉換為 events
+    note_items, tempo_items = utils.read_items(prompt_midi_path)
+    note_items = utils.quantize_items(note_items)
+    max_time = note_items[-1].end if note_items else tempo_items[-1].start
+    items = tempo_items + note_items
+    groups = utils.group_items(items, max_time)
+    prompt_events = utils.item2event(groups)
+
+    # 將 prompt events 轉換為 words
+    prompt_words = []
+    for event in prompt_events:
+        e = '{}_{}'.format(event.name, event.value)
+        if e in event2word:
+            prompt_words.append(event2word[e])
+
+    with torch.no_grad():
+        if not os.path.exists(model_path):
+            print(f"Model path does not exist: {model_path}")
+            return
+            
+        checkpoint = torch.load(model_path, map_location=opt.device, weights_only=False)
+        model = Model().to(opt.device)
+        state_dict = checkpoint['model']
+        state_dict = {k.replace('gpt2.', ''): v for k, v in state_dict.items()}
+        model.gpt2.load_state_dict(state_dict)
+        model.eval()
+
+        generated_sequence = prompt_words
+        current_generated_bar = 0
+        
+        pbar = tqdm(total=n_target_bar, desc='Generating continuation bars')
+        while current_generated_bar < n_target_bar:
+            input_tensor = torch.tensor([generated_sequence], dtype=torch.long, device=opt.device)
+            if input_tensor.size(1) > X_LEN:
+                input_tensor = input_tensor[:, -X_LEN:]
+            
+            output_logits = model(input_tensor)
+            next_token_logits = output_logits[0, -1, :]
+            
+            next_token = temperature_sampling(
+                logits=next_token_logits, 
+                temperature=temperature,
+                topk=topk)
+
+            generated_sequence.append(next_token)
+
+            if next_token == event2word['Bar_None']:
+                current_generated_bar += 1
+                pbar.update(1)
+        
+        pbar.close()
+        
+        print(f"\nContinuation complete. Writing to {output_path}")
+        utils.write_midi(
+            words=generated_sequence,
+            word2event=word2event,
+            output_path=output_path,
+            prompt_path=prompt_midi_path)
         
         # Generate wav by fluidsynth
         print("Generating WAV file...")
