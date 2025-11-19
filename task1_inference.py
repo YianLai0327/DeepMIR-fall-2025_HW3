@@ -1,15 +1,20 @@
 from main_g import test
 import os
 from tqdm import tqdm
+import argparse
 
 seeds = range(20)
 
-# checkpoint_paths = ["checkpoints/epoch_120.pkl"]
-checkpoint_path = "checkpoints/epoch_120.pkl"
+parser = argparse.ArgumentParser()
+parser.add_argument('--ckpt', type=str, help='the dictionary path', default='checkpoints/epoch_120.pkl')
+parser.add_argument('--output_dir', type=str, help='the output directory', default='task1_results')
+
+arg = parser.parse_args()
+checkpoint_path = arg.ckpt
 print(f"Starting inference for checkpoint: {checkpoint_path}")
 temps = [0.8, 1.0, 1.2]
 
-output_dir = 'task1_results'
+output_dir = arg.output_dir
 os.makedirs(output_dir, exist_ok=True)
 
 for temp in temps:
